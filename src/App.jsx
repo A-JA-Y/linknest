@@ -281,7 +281,10 @@ function ContactForm({ title, onSubmit }) {
 function LiveDemo() {
   const [highlights, setHighlights] = useState({});
   const [drawer, setDrawer] = useState(null);
+  const [selectedProductIndex, setSelectedProductIndex] = useState(0);
   const [neuralHistory, setNeuralHistory] = useState([]);
+  const [demoText, setDemoText] = useState(`Discover our latest collection of organic cotton essentials, designed for the modern sustainable lifestyle. Each piece is handcrafted with care, offering a minimalist aesthetic that doesn't compromise on comfort or quality.`);
+  const [isEditing, setIsEditing] = useState(false);
 
   const keywords = {
     "organic cotton": [
@@ -306,38 +309,148 @@ function LiveDemo() {
     ]
   };
 
-  const text = `Discover our latest collection of organic cotton essentials, designed for the modern sustainable lifestyle. Each piece is handcrafted with care, offering a minimalist aesthetic that doesn't compromise on comfort or quality.`;
+  // Flatten all products into a single array for searching
+  const allProducts = Object.values(keywords).flat();
+
+  const demoTextSuggestions = [
+    {
+      title: "Fashion Essentials",
+      text: "Discover our latest collection of organic cotton essentials, designed for the modern sustainable lifestyle. Each piece is handcrafted with care, offering a minimalist aesthetic. Try our Classic Organic Cotton Tee and Slim Leather Wallet for the perfect minimalist look."
+    },
+    {
+      title: "Tech Gadgets",
+      text: "Explore our premium tech accessories featuring sustainable materials and minimalist design. Our collection includes the Eco-Friendly Water Bottle for hydration and a Bamboo Cutlery Set for on-the-go meals. Each handcrafted item combines organic cotton elements with innovative sustainable technology."
+    },
+    {
+      title: "Home Decor",
+      text: "Transform your space with our sustainable home decor collection. We offer handcrafted pieces like the Artisan Ceramic Mug, Woven Macramé Planter, and Hand-Poured Soy Candle featuring organic cotton accents and minimalist designs, perfect for creating an elegant living environment."
+    },
+    {
+      title: "Sports & Fitness",
+      text: "Stay active with our premium sports collection featuring sustainable, minimalist athletic wear and accessories. The Eco-Friendly Water Bottle keeps you hydrated, while our Organic Cotton Socks and handcrafted minimalist gear provide comfort and performance."
+    }
+  ];
+
+  const text = demoText;
 
   const handleKeywordClick = (kw) => {
     setDrawer(kw);
+    setSelectedProductIndex(0);
     setNeuralHistory(prev => [...new Set([...prev, kw])]);
   };
 
-  const renderText = () => {
-    let parts = [];
-    let remaining = text;
-    const sortedKws = Object.keys(keywords).sort((a, b) => text.indexOf(a) - text.indexOf(b));
+  const handleProductClick = (productName) => {
+    // Find which keyword category this product belongs to
+    for (const [keyword, products] of Object.entries(keywords)) {
+      const productIndex = products.findIndex(p => p.name.toLowerCase() === productName.toLowerCase());
+      if (productIndex !== -1) {
+        setDrawer(keyword);
+        setSelectedProductIndex(productIndex);
+        setNeuralHistory(prev => [...new Set([...prev, keyword])]);
+        return;
+      }
+    }
+  };
 
-    sortedKws.forEach(kw => {
-      const idx = remaining.toLowerCase().indexOf(kw.toLowerCase());
-      if (idx !== -1) {
-        parts.push(remaining.slice(0, idx));
+  const renderText = () => {
+    if (!text) return [];
+    
+    // Find all keyword and product occurrences with their positions
+    const matches = [];
+    
+    // Find keyword matches
+    Object.keys(keywords).forEach(kw => {
+      const regex = new RegExp(kw, 'gi');
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({
+          type: 'keyword',
+          keyword: kw,
+          start: match.index,
+          end: match.index + kw.length,
+          matchedText: match[0]
+        });
+      }
+    });
+
+    // Find product matches
+    allProducts.forEach(product => {
+      const regex = new RegExp(product.name, 'gi');
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        matches.push({
+          type: 'product',
+          productName: product.name,
+          start: match.index,
+          end: match.index + product.name.length,
+          matchedText: match[0]
+        });
+      }
+    });
+
+    // Remove overlapping matches (prioritize products over keywords)
+    matches.sort((a, b) => a.start - b.start);
+    const filteredMatches = [];
+    for (let match of matches) {
+      const isOverlapping = filteredMatches.some(
+        m => (match.start >= m.start && match.start < m.end) || 
+             (match.end > m.start && match.end <= m.end)
+      );
+      if (!isOverlapping) {
+        filteredMatches.push(match);
+      }
+    }
+
+    // Build the JSX
+    let parts = [];
+    let lastIndex = 0;
+
+    filteredMatches.forEach((match, idx) => {
+      // Add text before this match
+      if (match.start > lastIndex) {
+        parts.push(text.slice(lastIndex, match.start));
+      }
+
+      if (match.type === 'product') {
+        // Product highlight (stronger color)
         parts.push(
-          <span key={kw} onClick={() => handleKeywordClick(kw)} style={{
+          <span key={`prod-${idx}`} onClick={() => handleProductClick(match.productName)} style={{
+            background: "linear-gradient(135deg, rgba(232,85,58,0.25) 0%, rgba(232,85,58,0.35) 100%)",
+            color: "#D4442B", padding: "3px 7px", borderRadius: 5, cursor: "pointer",
+            borderBottom: "3px solid #E8553A", fontWeight: 700,
+            transition: "all 0.2s", display: "inline", whiteSpace: "nowrap",
+            textDecoration: "underline"
+          }}
+            onMouseEnter={e => { e.target.style.background = "rgba(232,85,58,0.4)"; e.target.style.transform = "scale(1.02)"; }}
+            onMouseLeave={e => { e.target.style.background = "rgba(232,85,58,0.25)"; e.target.style.transform = "scale(1)"; }}
+            title="Click to view this product"
+          >{match.matchedText}</span>
+        );
+      } else {
+        // Keyword highlight (lighter color)
+        parts.push(
+          <span key={`kw-${idx}`} onClick={() => handleKeywordClick(match.keyword)} style={{
             background: "linear-gradient(135deg, rgba(232,85,58,0.12) 0%, rgba(232,85,58,0.18) 100%)",
             color: "#D4442B", padding: "2px 6px", borderRadius: 5, cursor: "pointer",
             borderBottom: "2px solid #E8553A", fontWeight: 600,
-            transition: "all 0.2s", display: "inline"
+            transition: "all 0.2s", display: "inline", whiteSpace: "nowrap"
           }}
             onMouseEnter={e => e.target.style.background = "rgba(232,85,58,0.25)"}
             onMouseLeave={e => e.target.style.background = "rgba(232,85,58,0.12)"}
-          >{remaining.slice(idx, idx + kw.length)}</span>
+            title="Click to see related products"
+          >{match.matchedText}</span>
         );
-        remaining = remaining.slice(idx + kw.length);
       }
+
+      lastIndex = match.end;
     });
-    parts.push(remaining);
-    return parts;
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
   };
 
   return (
@@ -363,7 +476,54 @@ function LiveDemo() {
         <p style={{ fontSize: 12, color: "#bbb", marginTop: 16, fontStyle: "italic" }}>
           ↑ Click any highlighted keyword to see LinkNest in action
         </p>
+
+        {/* Edit button */}
+        <button onClick={() => setIsEditing(!isEditing)} style={{
+          marginTop: 16, padding: "8px 16px", background: isEditing ? "#E8553A" : "#f5f0ea",
+          color: isEditing ? "#fff" : "#E8553A", border: "none", borderRadius: 8,
+          fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.2s"
+        }}
+          onMouseEnter={e => { if (!isEditing) { e.target.style.background = "#ede4d9"; } }}
+          onMouseLeave={e => { if (!isEditing) { e.target.style.background = "#f5f0ea"; } }}
+        >
+          {isEditing ? "✓ Done Editing" : "✏️ Edit Text"}
+        </button>
       </div>
+
+      {/* Edit mode */}
+      {isEditing && (
+        <div style={{
+          marginTop: 24, padding: 20, background: "#fef6f4", borderRadius: 16,
+          border: "2px solid #E8553A", animation: "slideUp 0.3s ease"
+        }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e", display: "block", marginBottom: 12 }}>
+            Edit Demo Text:
+          </label>
+          <textarea value={demoText} onChange={e => setDemoText(e.target.value)} style={{
+            width: "100%", minHeight: 100, padding: 12, border: "1.5px solid #E8553A",
+            borderRadius: 10, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+            outline: "none", resize: "vertical", color: "#1a1a2e"
+          }} />
+          
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#1a1a2e", marginBottom: 10 }}>Quick suggestions:</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              {demoTextSuggestions.map((s, i) => (
+                <button key={i} onClick={() => setDemoText(s.text)} style={{
+                  padding: "10px 12px", background: "#fff", border: "1px solid #E8553A",
+                  borderRadius: 8, fontSize: 12, fontWeight: 500, color: "#E8553A",
+                  cursor: "pointer", transition: "all 0.2s", textAlign: "left"
+                }}
+                  onMouseEnter={e => { e.target.style.background = "#E8553A"; e.target.style.color = "#fff"; }}
+                  onMouseLeave={e => { e.target.style.background = "#fff"; e.target.style.color = "#E8553A"; }}
+                >
+                  {s.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Side drawer */}
       {drawer && (
@@ -387,10 +547,10 @@ function LiveDemo() {
             <div key={i} style={{
               display: "flex", alignItems: "center", gap: 12, padding: "12px 10px",
               borderRadius: 10, marginBottom: 6, cursor: "pointer",
-              transition: "background 0.15s", background: i === 0 ? "#fef6f4" : "transparent"
+              transition: "background 0.15s", background: i === selectedProductIndex ? "#fef6f4" : "transparent"
             }}
               onMouseEnter={e => e.currentTarget.style.background = "#fef6f4"}
-              onMouseLeave={e => { if (i !== 0) e.currentTarget.style.background = "transparent"; }}
+              onMouseLeave={e => { if (i !== selectedProductIndex) e.currentTarget.style.background = "transparent"; }}
             >
               <div style={{ fontSize: 28, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#f9f4f0", borderRadius: 10 }}>
                 {p.img}
